@@ -31,7 +31,7 @@ export async function handleDaily(request, db, userId, path, body, clock = () =>
       missingRule: "빠진 날짜는 0으로 채우지 않고 기록일 수에서 제외",
       duplicateRule: "서울 날짜별 한 건만 허용하고 두 번째 입력은 거부",
       outlierRule: "큰 값도 원값을 보존하고 설명을 메모에 기록",
-      roundingRule: "합계·평균은 소수 첫째 자리에서 반올림",
+      roundingRule: "합계·평균은 소수 둘째 자리에서 반올림해 소수 첫째 자리까지 표시",
       weekStart: "월요일", planRule: ask(body.planRule,"계획 규칙",300)
     };
     await db.prepare("INSERT INTO daily_specs (user_id,question,metric,unit,calculation_rule,missing_rule,duplicate_rule,outlier_rule,rounding_rule,week_start,plan_rule,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").bind(userId,spec.question,spec.metric,spec.unit,spec.calculationRule,spec.missingRule,spec.duplicateRule,spec.outlierRule,spec.roundingRule,spec.weekStart,spec.planRule,time).run();
