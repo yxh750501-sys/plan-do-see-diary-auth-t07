@@ -55,6 +55,13 @@ await call(`/api/tasks/${tasks[0]}/reopen`, "POST");
 assert.equal((await call("/api/snapshot")).reviews[0].completed, 0);
 await call(`/api/tasks/${tasks[0]}/complete`, "POST");
 for (let i = 0; i < 3; i++) await call("/api/logs", "POST", { taskId: tasks[i], startAt: `2026-10-19T0${i}:00:00+09:00`, endAt: `2026-10-19T0${i}:30:00+09:00`, blocker: i === 1 ? "재료 부족" : "", note: `실행 ${i+1}` });
+for (const [startAt, endAt] of [
+  [new Date(Date.now() - 600000).toISOString(), new Date(Date.now() - 600000).toISOString()],
+  [new Date(Date.now() + 3600000).toISOString(), new Date(Date.now() + 5400000).toISOString()]
+]) {
+  const response = await worker.fetch(new Request("https://diary.test/api/logs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ taskId: tasks[0], startAt, endAt, blocker: "", note: "검사" }) }), { DB });
+  assert.equal(response.status, 400);
+}
 snapshot = await call("/api/snapshot");
 const review = snapshot.reviews[0];
 assert.equal(review.blocked, 1);

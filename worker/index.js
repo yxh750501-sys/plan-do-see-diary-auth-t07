@@ -140,7 +140,8 @@ async function handleApi(request, db, path) {
   if (path === "/api/logs" && request.method === "POST") {
     const task = await first(db, "SELECT * FROM tasks WHERE id=? AND deleted_at IS NULL", body.taskId); if (!task) return bad("할 일을 찾을 수 없습니다.", 404);
     const startAt = timestamp(body.startAt, "시작 시각"), endAt = timestamp(body.endAt, "끝 시각");
-    const diff = Date.parse(endAt) - Date.parse(startAt); assert(diff >= 0 && diff <= 7 * 86400000, "끝 시각은 시작 뒤 7일 안이어야 합니다.");
+    const diff = Date.parse(endAt) - Date.parse(startAt); assert(diff >= 60000 && diff <= 7 * 86400000, "끝 시각은 시작보다 최소 1분 뒤, 7일 안이어야 합니다.");
+    assert(Date.parse(endAt) <= Date.now() + 60000, "아직 지나지 않은 시각은 실행 기록으로 저장할 수 없습니다.");
     const actualMinutes = Math.round(diff / 60000), key = id();
     await run(db, "INSERT INTO work_logs (id,task_id,start_at,end_at,actual_minutes,blocker,note,created_at) VALUES (?,?,?,?,?,?,?,?)", key,task.id,startAt,endAt,actualMinutes,text(body.blocker ?? "", "막힌 이유", 500, false),text(body.note ?? "", "한 일", 500, false),now());
     return reply({ id: key, actualMinutes }, 201);
