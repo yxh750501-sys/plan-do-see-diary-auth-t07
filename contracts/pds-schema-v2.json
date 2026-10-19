@@ -1,0 +1,28 @@
+{
+  "version": "pds-v2",
+  "database": "Cloudflare D1 (server-side SQLite)",
+  "public_access": "No login. Anyone with the URL can read and change the shared diary.",
+  "timezone": "Asia/Seoul",
+  "dates": "YYYY-MM-DD local calendar dates in Asia/Seoul; delayed means due_date < current Asia/Seoul date and status != done",
+  "timestamps": "RFC3339 UTC strings with Z suffix; converted to Asia/Seoul for display",
+  "time_unit": "integer minutes",
+  "tables": {
+    "plans": { "primary_key": "id UUID", "fields": ["title", "start_date", "end_date", "priority", "success_criteria", "estimated_minutes", "carry_forward", "created_at", "updated_at"] },
+    "plan_revisions": { "primary_key": "id UUID", "foreign_keys": { "plan_id": "plans.id" }, "unique": ["plan_id", "version"], "fields": ["snapshot_json", "changed_at"] },
+    "tasks": { "primary_key": "id UUID", "foreign_keys": { "plan_id": "plans.id" }, "fields": ["title", "due_date", "priority", "tag", "estimated_minutes", "status", "completed_at", "deleted_at", "created_at", "updated_at"] },
+    "work_logs": { "primary_key": "id UUID", "foreign_keys": { "task_id": "tasks.id" }, "fields": ["start_at", "end_at", "actual_minutes", "blocker", "note", "created_at"] },
+    "completion_events": { "primary_key": "task_id", "foreign_keys": { "task_id": "tasks.id" }, "fields": ["completed_at"] },
+    "review_actions": { "primary_key": "id UUID", "foreign_keys": { "from_plan_id": "plans.id", "to_plan_id": "plans.id" }, "fields": ["improvement", "created_at"] }
+  },
+  "review_rules": {
+    "planned": "Count active tasks for plan",
+    "completed": "Count active tasks where status = done",
+    "delayed": "Count active tasks where status != done and due_date < today in Asia/Seoul",
+    "blocked": "Count distinct active tasks with at least one nonempty blocker in work_logs",
+    "estimated_minutes": "Sum estimated_minutes of active tasks",
+    "actual_minutes": "Sum actual_minutes of work_logs attached to active tasks",
+    "difference_minutes": "actual_minutes - estimated_minutes",
+    "empty_sum": 0,
+    "drilldown": "Every review value includes the source task IDs in evidence"
+  }
+}
