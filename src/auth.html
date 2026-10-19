@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="내 계획과 실행 기록을 로그인 뒤에만 보여주는 플랜두씨 다이어리">
+  <title>로그인 | 플랜두씨 다이어리 2</title>
+  <link rel="stylesheet" href="/auth.css">
+  <script src="/auth.js" defer></script>
+</head>
+<body>
+  <main class="auth-shell">
+    <div class="identity"><span class="identity-icon">P</span><span>PLAN · DO · SEE</span></div>
+    <div class="auth-layout">
+      <section class="intro" aria-labelledby="intro-heading">
+        <span class="eyebrow">MY PRIVATE DIARY</span>
+        <h1 id="intro-heading">계획은 선명하게.<br><em>기록은 나에게만.</em></h1>
+        <p>계획과 실제로 한 일을 적고, 숫자의 근거를 돌아봅니다. 내 자료는 로그인한 계정에서만 열립니다.</p>
+        <div class="feature"><b>01</b><span>계획을 세우고 수정 전 내용을 보존합니다.</span></div>
+        <div class="feature"><b>02</b><span>실행 기록과 5일 관찰을 날짜별로 남깁니다.</span></div>
+        <div class="feature"><b>03</b><span>돌아보기에서 다음 계획의 규칙을 정합니다.</span></div>
+      </section>
+      <section class="auth-card" aria-labelledby="form-heading">
+        <div class="card-top"><span>PRIVATE ACCESS</span><span class="lock">● 잠김</span></div>
+        <h2 id="form-heading">로그인</h2>
+        <p class="helper">가입한 계정으로 내 기록을 열어 보세요.</p>
+        <div class="tabs" role="tablist" aria-label="계정 작업">
+          <button type="button" id="login-tab" class="selected" aria-selected="true">로그인</button>
+          <button type="button" id="signup-tab" aria-selected="false">가입</button>
+        </div>
+        <form id="auth-form">
+          <label for="username">아이디</label>
+          <input id="username" name="username" autocomplete="username" minlength="3" maxlength="32" pattern="[a-z0-9_]{3,32}" required placeholder="영문 소문자·숫자·_">
+          <label for="password">비밀번호</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" minlength="12" maxlength="72" required placeholder="12자 이상">
+          <p id="message" class="message" role="status" aria-live="polite"></p>
+          <button id="submit" type="submit" class="submit">로그인 <span aria-hidden="true">↗</span></button>
+        </form>
+        <p class="footnote">심사자는 계정을 만들지 않아도 이 로그인 화면을 볼 수 있습니다. 비밀번호나 세션 값을 제출물에 적지 마세요.</p>
+      </section>
+    </div>
+    <footer>플랜두씨 다이어리 2 <span>AUTHENTICATED · PRIVATE</span></footer>
+  </main>
+</body>
+</html>

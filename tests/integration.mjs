@@ -1,0 +1,97 @@
+import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import bcrypt from "bcryptjs";
+import { handleDaily } from "../worker/daily.js";
+
+const root=resolve(import.meta.dirname,"..");
+const source=await readFile(resolve(root,"dist/server/index.js"),"utf8");
+const worker=(await import(`data:text/javascript;base64,${Buffer.from(source).toString("base64")}`)).default;
+const sqlite=new DatabaseSync(":memory:"); sqlite.exec("PRAGMA foreign_keys=ON");
+for(const file of ["0000_natural_queen_noir.sql","0001_daffy_captain_marvel.sql"]){
+  const sql=await readFile(resolve(root,"drizzle",file),"utf8");
+  for(const statement of sql.split("--> statement-breakpoint")) if(statement.trim()) sqlite.exec(statement);
+}
+const DB={prepare(sql){const statement=sqlite.prepare(sql);let values=[];return{bind(...args){values=args;return this},all(){return{results:statement.all(...values)}},first(){return statement.get(...values)??null},run(){return statement.run(...values)}}},async batch(commands){sqlite.exec("BEGIN");try{const result=commands.map(c=>c.run());sqlite.exec("COMMIT");return result}catch(error){sqlite.exec("ROLLBACK");throw error}}};
+const ORIGIN="https://diary.test";
+async function call(path,method="GET",body,cookie=""){
+  const headers={};if(cookie)headers.cookie=cookie;if(!["GET","HEAD"].includes(method))headers.origin=ORIGIN;if(body!==undefined)headers["content-type"]="application/json";
+  const response=await worker.fetch(new Request(`${ORIGIN}${path}`,{method,headers,body:body===undefined?undefined:JSON.stringify(body)}),{DB});
+  return{status:response.status,data:(response.headers.get("content-type")||"").includes("application/json")?await response.json():null,cookie:response.headers.get("set-cookie")?.split(";")[0]??""};
+}
+const password=crypto.randomUUID()+crypto.randomUUID(),other=crypto.randomUUID()+crypto.randomUUID();
+const a=await call("/api/auth/signup","POST",{username:"reader_a",password});
+const b=await call("/api/auth/signup","POST",{username:"reader_b",password});
+assert.equal(a.status,201);assert.equal(b.status,201);assert(a.cookie.startsWith("pds_session="));
+assert.equal((await call("/api/auth/signup","POST",{username:"reader_a",password:other})).status,409);
+const hashes=sqlite.prepare("SELECT password_hash FROM users ORDER BY username").all().map(r=>r.password_hash);
+assert.notEqual(hashes[0],hashes[1]);assert(!hashes.some(h=>h.includes(password)));assert(await bcrypt.compare(password,hashes[0]));
+if (process.env.PDS_PRINT_SYNTHETIC_HASHES === "1") console.log(JSON.stringify({ syntheticDatabaseHashA: hashes[0], syntheticDatabaseHashB: hashes[1], sameInputVerified: await bcrypt.compare(password, hashes[1]) }));
+const wrong=await call("/api/auth/login","POST",{username:"reader_a",password:other});
+const missing=await call("/api/auth/login","POST",{username:"reader_x",password:other});
+assert.equal(wrong.status,401);assert.equal(missing.status,401);assert.equal(wrong.data.error,missing.data.error);
+assert.equal((await call("/diary")).status,302);assert.equal((await call("/api/snapshot")).status,401);
+assert.equal((await call("/diary","GET",undefined,a.cookie)).status,200);
+const foreignOrigin=await worker.fetch(new Request(`${ORIGIN}/api/plans`,{method:"POST",headers:{origin:"https://elsewhere.test",cookie:a.cookie,"content-type":"application/json"},body:JSON.stringify({title:"침입"})}),{DB});
+assert.equal(foreignOrigin.status,403);
+const plan={title:"계획",startDate:"2026-10-20",endDate:"2026-10-25",priority:1,successCriteria:"세 번 실행",estimatedMinutes:180};
+const pa=await call("/api/plans","POST",{...plan,title:"A 계획"},a.cookie),pb=await call("/api/plans","POST",{...plan,title:"B 계획"},b.cookie);
+assert.equal(pa.status,201);assert.equal(pb.status,201);
+const task={title:"할 일",dueDate:"2026-10-20",priority:1,tag:"work",estimatedMinutes:30};
+const ta=await call("/api/tasks","POST",{...task,planId:pa.data.id},a.cookie),tb=await call("/api/tasks","POST",{...task,planId:pb.data.id},b.cookie);
+assert.equal(ta.status,201);assert.equal(tb.status,201);
+for(const [actor,otherPlan,otherTask] of [[a,pb.data.id,tb.data.id],[b,pa.data.id,ta.data.id]]){
+  const c=actor.cookie;
+  assert.equal((await call(`/api/plans/${otherPlan}`,"PATCH",plan,c)).status,404);
+  assert.equal((await call(`/api/plans/${otherPlan}/next`,"POST",{...plan,improvement:"침입"},c)).status,404);
+  assert.equal((await call("/api/tasks","POST",{...task,planId:otherPlan},c)).status,404);
+  assert.equal((await call(`/api/tasks/${otherTask}`,"PATCH",task,c)).status,404);
+  assert.equal((await call(`/api/tasks/${otherTask}`,"DELETE",undefined,c)).status,404);
+  assert.equal((await call(`/api/tasks/${otherTask}/complete`,"POST",undefined,c)).status,404);
+  assert.equal((await call("/api/logs","POST",{taskId:otherTask,startAt:new Date(Date.now()-120000).toISOString(),endAt:new Date(Date.now()-60000).toISOString(),note:"침입",blocker:""},c)).status,404);
+  const snapshot=await call("/api/snapshot","GET",undefined,c),exported=await call("/api/export","GET",undefined,c);
+  assert(!snapshot.data.plans.some(p=>p.id===otherPlan));assert(!snapshot.data.tasks.some(t=>t.id===otherTask));assert(!exported.data.allTasks.some(t=>t.id===otherTask));
+}
+assert.equal((await call(`/api/plans/${pb.data.id}`,"PATCH",plan,b.cookie)).status,200);
+assert.equal((await call(`/api/tasks/${tb.data.id}`,"DELETE",undefined,b.cookie)).status,200);
+assert.equal((await call("/api/snapshot","GET",undefined,a.cookie)).status,200);
+assert.equal((await call("/api/auth/logout","POST",{},a.cookie)).status,200);
+assert.equal((await call("/api/snapshot","GET",undefined,a.cookie)).status,401);
+const logged=await call("/api/auth/login","POST",{username:"reader_a",password});assert.equal(logged.status,200);
+assert.equal((await call("/api/auth/password","POST",{currentPassword:password,newPassword:other},logged.cookie)).status,200);
+assert.equal((await call("/api/snapshot","GET",undefined,logged.cookie)).status,401);
+assert.equal((await call("/api/auth/login","POST",{username:"reader_a",password})).status,401);
+const renewed=await call("/api/auth/login","POST",{username:"reader_a",password:other});assert.equal(renewed.status,200);
+
+const uid=sqlite.prepare("SELECT id FROM users WHERE username='reader_a'").get().id;
+const clock=(date,time="05:00:00")=>()=>new Date(`${date}T${time}Z`);
+const daily=(path,body,when)=>handleDaily(new Request(`${ORIGIN}${path}`,{method:"POST"}),DB,uid,path,body,when);
+assert.equal((await daily("/api/daily/spec",{question:"꾸준히 할까?",metric:"작업 시간",unit:"분",planRule:"하루 한 작업",},clock("2026-10-20"))).status,201);
+for(const date of ["2026-10-20","2026-10-21"])assert.equal((await daily("/api/daily/entries",{value:10,note:"실제 작업"},clock(date))).status,201);
+assert.equal((await daily("/api/daily/entries",{value:10,note:"중복"},clock("2026-10-21"))).status,409);
+assert.equal((await daily("/api/daily/entries",{value:10,note:"3일차"},clock("2026-10-22"))).status,409);
+assert.equal((await daily("/api/daily/rule-change",{afterRule:"오전에 먼저 시작",reason:"앞 이틀이 짧았다"},clock("2026-10-21","05:10:00"))).status,201);
+for(const date of ["2026-10-22","2026-10-23","2026-10-24"])assert.equal((await daily("/api/daily/entries",{value:20,note:"실제 작업"},clock(date))).status,201);
+const state=await (await handleDaily(new Request(`${ORIGIN}/api/daily`),DB,uid,"/api/daily",{},clock("2026-10-24"))).json();
+assert.equal(state.entries.length,5);assert.equal(state.summary.total,80);assert.equal(state.summary.average,16);assert.equal(state.summary.beforeAverage,10);assert.equal(state.summary.afterAverage,20);
+assert.equal(state.change.day1_id,state.entries[0].id);assert.equal(state.change.day2_id,state.entries[1].id);
+assert(state.change.changed_at>state.entries[1].created_at);assert(state.change.changed_at<state.entries[2].created_at);
+assert.equal((await call("/api/export","GET",undefined,renewed.cookie)).data.daily.entries.length,5);
+assert.equal((await call("/api/auth/account","DELETE",{password:other},renewed.cookie)).status,200);
+assert.equal((await call("/api/snapshot","GET",undefined,renewed.cookie)).status,401);
+assert.equal(sqlite.prepare("SELECT count(*) AS n FROM plans WHERE owner_id=?").get(uid).n,0);
+assert.equal(sqlite.prepare("SELECT count(*) AS n FROM daily_entries WHERE user_id=?").get(uid).n,0);
+assert.equal((await call("/api/snapshot","GET",undefined,b.cookie)).data.plans.length,1);
+const c=await call("/api/auth/signup","POST",{username:"reader_c",password});
+const oldPlan={id:"old-plan",title:"T06 계획",start_date:"2026-10-19",end_date:"2026-10-23",priority:1,success_criteria:"검사",estimated_minutes:30,carry_forward:"",created_at:"2026-10-19T00:00:00Z",updated_at:"2026-10-19T00:00:00Z"};
+const oldTask={id:"old-task",plan_id:oldPlan.id,title:"T06 할 일",due_date:"2026-10-19",priority:1,tag:"DO",estimated_minutes:30,status:"doing",completed_at:null,deleted_at:null,created_at:oldPlan.created_at,updated_at:oldPlan.updated_at};
+const oldLog={id:"old-log",task_id:oldTask.id,start_at:"2026-10-19T00:00:00Z",end_at:"2026-10-19T00:05:00Z",actual_minutes:5,blocker:"",note:"실제 작업",created_at:"2026-10-19T00:05:00Z"};
+const imported=await call("/api/import","POST",{schemaVersion:"pds-v2",plans:[oldPlan],revisions:[],allTasks:[oldTask],allLogs:[oldLog],completions:[],actions:[]},c.cookie);
+assert.equal(imported.status,201);assert.deepEqual(imported.data.imported,{plans:1,tasks:1,logs:1});
+const moved=await call("/api/snapshot","GET",undefined,c.cookie);
+assert.equal(moved.data.plans[0].title,"T06 계획");assert.equal(moved.data.logs[0].note,"실제 작업");
+assert.notEqual(moved.data.plans[0].id,oldPlan.id);assert.equal(moved.data.tasks[0].plan_id,moved.data.plans[0].id);
+assert.equal((await call("/api/import","POST",{schemaVersion:"pds-v2",plans:[oldPlan],allTasks:[oldTask],allLogs:[oldLog]},c.cookie)).status,400);
+assert.equal((await call("/api/snapshot","GET",undefined,b.cookie)).data.plans.length,1);
+console.log("PASS signup, salted hashes, same login errors, protected route, two-way isolation, logout/password revocation, T06 import, 5-day sequence, export, account deletion");
