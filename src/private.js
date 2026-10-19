@@ -54,8 +54,8 @@ pick("#import-form").addEventListener("submit", async event => {
   } catch (error) { notice(error.message,true); }
 });
 pick("#password-form").addEventListener("submit", async event => {
-  event.preventDefault(); const values = formValues(event.currentTarget);
-  try { await api("/api/auth/password","POST",values); event.currentTarget.reset(); alert("비밀번호를 바꿨습니다. 새 비밀번호로 다시 로그인해 주세요."); location.replace("/"); }
+  event.preventDefault(); const form = event.currentTarget, values = formValues(form);
+  try { await api("/api/auth/password","POST",values); form.reset(); alert("비밀번호를 바꿨습니다. 새 비밀번호로 다시 로그인해 주세요."); location.replace("/"); }
   catch (error) { notice(error.message,true); }
 });
 pick("#delete-account-form").addEventListener("submit", async event => {
@@ -68,8 +68,8 @@ pick("#daily-spec-form").addEventListener("submit", async event => {
   catch (error) { notice(error.message,true); }
 });
 pick("#daily-entry-form").addEventListener("submit", async event => {
-  event.preventDefault(); const body = formValues(event.currentTarget); body.value = Number(body.value);
-  try { renderDaily(await api("/api/daily/entries","POST",body)); event.currentTarget.reset(); notice("오늘 기록을 저장했습니다."); }
+  event.preventDefault(); const form = event.currentTarget, body = formValues(form); body.value = Number(body.value);
+  try { renderDaily(await api("/api/daily/entries","POST",body)); form.reset(); notice("오늘 기록을 저장했습니다."); }
   catch (error) { notice(error.message,true); }
 });
 pick("#daily-rule-form").addEventListener("submit", async event => {
